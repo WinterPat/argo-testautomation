@@ -2,24 +2,49 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>HLS Stream</title>
+  <title>Auto‑Reloading HLS Stream</title>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
 <body>
   <video id="video" controls width="640"></video>
   <script>
-    const video = document.getElementById('video');
-    const url   = 'docs/stream/playlist.m3u8';
+    const video    = document.getElementById('video');
+    const playlist = 'docs/stream/playlist.m3u8';
 
     if (Hls.isSupported()) {
-      const hls = new Hls();
-      hls.loadSource(url);
+      const hls = new Hls({
+        // optional: tune live‑playback buffering
+        liveSyncDurationCount:      3,  
+        liveMaxLatencyDurationCount: 5
+      });
       hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play());
+
+      // 1️⃣ Before every manifest load, tack on a cache‑buster
+      hls.on(Hls.Events.MANIFEST_LOADING, (event, data) => {
+        data.url = playlist + '?_=' + Date.now();
+      });
+
+      // 2️⃣ Also before loading each level (media playlist)
+      hls.on(Hls.Events.LEVEL_LOADING, (event, data) => {
+        // strip any existing query, then add new timestamp
+        const clean  = data.url.split('?')[0];
+        data.url      = clean + '?_=' + Date.now();
+      });
+
+      // 3️⃣ Initial load
+      hls.loadSource(playlist);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play();
+      });
     }
     else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = url;
-      video.addEventListener('loadedmetadata', () => video.play());
+      // Safari fallback
+      function loadNative() {
+        video.src = playlist + '?_=' + Date.now();
+        video.play();
+      }
+      loadNative();
+      setInterval(loadNative, 8000);  // re‑set src every 8 s
     }
   </script>
 </body>
